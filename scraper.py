@@ -101,8 +101,10 @@ def send_sms(matches):
     lines = []
     for m in matches:
         slots_info = m['slots_info'].replace('\xa0', ' ').strip()
+        slots_short = re.sub(r'(\d+)\s+of\s+(\d+).*', r'\1/\2', slots_info) if slots_info else slots_info
+        date_short = datetime.strptime(m['date'], "%Y-%m-%d").strftime("%m/%d")
         names = ", ".join(m['new_registrants'])
-        lines.append(f"{m['date']} - {slots_info} | {names}")
+        lines.append(f"{date_short} {slots_short} | {names}")
     body = "\n".join(lines)
 
     msg = EmailMessage()
