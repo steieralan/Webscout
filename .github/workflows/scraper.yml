@@ -1,8 +1,8 @@
 name: Webscout Scraper
 on:
   schedule:
-    - cron: '0 */2 * * *'
-  workflow_dispatch:
+    - cron: '0 */2 * * *'  # every 2 hours
+  workflow_dispatch:        # lets you trigger it manually too
 
 jobs:
   scrape:
@@ -16,7 +16,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install playwright python-dotenv
+          pip install playwright python-dotenv urllib3
           playwright install chromium
 
       - name: Run scraper
