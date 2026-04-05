@@ -10,6 +10,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Restore DB cache
+        uses: actions/cache@v4
+        with:
+          path: webscout_cache.db
+          key: webscout-db-v1
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
