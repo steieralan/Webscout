@@ -14,7 +14,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: webscout_cache.db
-          key: webscout-db-v1
+          key: webscout-db-${{ github.run_id }}
+          restore-keys: |
+            webscout-db-
 
       - uses: actions/setup-python@v5
         with:
