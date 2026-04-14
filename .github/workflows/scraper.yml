@@ -7,18 +7,20 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Restore DB cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: webscout_cache.db
           key: webscout-db-${{ github.run_id }}
           restore-keys: |
             webscout-db-
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
