@@ -1,9 +1,11 @@
 import sqlite3
 import hashlib
+import smtplib
 import warnings
 import os
 import re
 import traceback
+from email.message import EmailMessage
 from playwright.sync_api import sync_playwright
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
@@ -22,6 +24,9 @@ TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER")
 PHONE_NUMBER = os.getenv("PHONE_NUMBER")
+GMAIL_USER = os.getenv("GMAIL_USER")
+GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
+NOTIFY_EMAIL = "steieralan@gmail.com"
 DB_NAME = "webscout_cache.db"
 KEYWORDS = ["Advanced Morning Play ( 4.0 recommended)"]
 
@@ -106,12 +111,15 @@ def send_sms(matches):
         lines.append(f"{date_short} {slots_short} | {names}")
     body = "\n".join(lines)
 
-    client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-    client.messages.create(
-        body=body,
-        from_=TWILIO_FROM_NUMBER,
-        to=f"+1{PHONE_NUMBER}"
-    )
+    msg = EmailMessage()
+    msg.set_content(body)
+    msg["Subject"] = "Webscout: New Registrants"
+    msg["From"] = GMAIL_USER
+    msg["To"] = NOTIFY_EMAIL
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+        server.send_message(msg)
 
 def run_scraper():
     db = WebscoutDB()
