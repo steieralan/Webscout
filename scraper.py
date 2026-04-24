@@ -1,15 +1,14 @@
 import sqlite3
 import hashlib
-import smtplib
 import warnings
 import os
 import re
 import traceback
-from email.message import EmailMessage
+import urllib.request
+import json
 from playwright.sync_api import sync_playwright
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
-from twilio.rest import Client
 
 # Silence environment noise
 warnings.filterwarnings("ignore")
@@ -20,13 +19,8 @@ urllib3.disable_warnings()
 
 # --- LOAD CREDENTIALS FROM .env ---
 load_dotenv()
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
-TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER")
-PHONE_NUMBER = os.getenv("PHONE_NUMBER")
-GMAIL_USER = os.getenv("GMAIL_USER")
-GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
-NOTIFY_EMAIL = "steieralan@gmail.com"
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 DB_NAME = "webscout_cache.db"
 KEYWORDS = ["Advanced Morning Play ( 4.0 recommended)"]
 
@@ -116,15 +110,10 @@ def send_sms(matches):
         lines.append(f"{date_short} {slots_short} | {names}")
     body = "\n".join(lines)
 
-    msg = EmailMessage()
-    msg.set_content(body)
-    msg["Subject"] = "Webscout: New Registrants"
-    msg["From"] = GMAIL_USER
-    msg["To"] = NOTIFY_EMAIL
-
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-        server.send_message(msg)
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = json.dumps({"chat_id": TELEGRAM_CHAT_ID, "text": body}).encode()
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+    urllib.request.urlopen(req)
 
 def run_scraper():
     db = WebscoutDB()
