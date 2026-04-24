@@ -91,14 +91,19 @@ def get_registrants(page, number):
     page.wait_for_timeout(8000)
     try:
         page.locator("text=REGISTRANTS").click(timeout=10000)
-    except:
+        print(f"   ✅ Clicked REGISTRANTS tab")
+    except Exception as e:
+        print(f"   ❌ Could not click REGISTRANTS tab: {e}")
         return []
     page.wait_for_timeout(3000)
     content = page.inner_text("body")
-    match = re.search(r"Name\n(.+?)\n© 2026", content, re.DOTALL)
+    print(f"   📄 Page snippet: {repr(content[content.find('REGISTRANT'):content.find('REGISTRANT')+300] if 'REGISTRANT' in content else content[:300])}")
+    match = re.search(r"Name\s*\n(.+?)\n©\s*\d{4}", content, re.DOTALL)
     if match:
         names = [n.strip() for n in match.group(1).strip().split("\n") if n.strip() and n.strip() != "Name"]
+        print(f"   👥 Found registrants: {names}")
         return names
+    print(f"   ⚠️ Regex did not match page content")
     return []
 
 def send_sms(matches):
