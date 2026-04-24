@@ -169,9 +169,6 @@ def run_scraper():
                     continue
 
                 signed = item.get("SignedMembers", 0)
-                if signed == 0:
-                    continue
-
                 slots_info = item.get("SlotsInfo", "")
                 number = item.get("Number")
 
