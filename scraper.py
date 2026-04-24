@@ -159,7 +159,7 @@ def run_scraper():
                 return
 
             today = datetime.now(tz=timezone.utc).date()
-            cutoff = today + timedelta(days=14)
+            cutoff = today + timedelta(days=7)
 
             matches = []
             for item in captured_data:
