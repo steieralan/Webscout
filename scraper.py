@@ -108,7 +108,7 @@ def send_sms(matches):
         date_short = datetime.strptime(m['date'], "%Y-%m-%d").strftime("%m/%d")
         lines.append(f"{date_short} {slots_short}")
         for name in m['all_registrants']:
-            tag = " ⭐" if name in m['new_registrants'] else ""
+            tag = " +" if name in m['new_registrants'] else ""
             lines.append(f"  {name}{tag}")
     body = "\n".join(lines)
 
