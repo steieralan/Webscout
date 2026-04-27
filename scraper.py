@@ -106,8 +106,10 @@ def send_sms(matches):
         slots_info = m['slots_info'].replace('\xa0', ' ').strip()
         slots_short = re.sub(r'(\d+)\s+of\s+(\d+).*', r'\1/\2', slots_info) if slots_info else slots_info
         date_short = datetime.strptime(m['date'], "%Y-%m-%d").strftime("%m/%d")
-        names = ", ".join(m['new_registrants'])
-        lines.append(f"{date_short} {slots_short} | {names}")
+        lines.append(f"{date_short} {slots_short}")
+        for name in m['all_registrants']:
+            tag = " ⭐" if name in m['new_registrants'] else ""
+            lines.append(f"  {name}{tag}")
     body = "\n".join(lines)
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -177,7 +179,8 @@ def run_scraper():
                         "date": date_str,
                         "title": title,
                         "slots_info": slots_info,
-                        "new_registrants": new_registrants
+                        "new_registrants": new_registrants,
+                        "all_registrants": registrants
                     })
                 else:
                     print(f"   No new registrants on {date_str}")
