@@ -28,21 +28,34 @@ TOKEN_FILE = os.path.join(BASE_DIR, "google_token.json")
 ET = ZoneInfo("America/New_York")
 
 def get_calendar_service():
-    with open(TOKEN_FILE) as f:
-        token_data = json.load(f)
-    creds = Credentials(
-        token=token_data.get("token"),
-        refresh_token=token_data["refresh_token"],
-        token_uri=token_data["token_uri"],
-        client_id=token_data["client_id"],
-        client_secret=token_data["client_secret"],
-        scopes=token_data["scopes"],
-    )
-    if creds.expired and creds.refresh_token:
+    # Prefer individual env vars (GitHub Actions), fall back to token file (local)
+    refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN")
+    client_id     = os.getenv("GOOGLE_CLIENT_ID")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+
+    if refresh_token and client_id and client_secret:
+        creds = Credentials(
+            token=None,
+            refresh_token=refresh_token,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=client_id,
+            client_secret=client_secret,
+            scopes=["https://www.googleapis.com/auth/calendar"],
+        )
+    else:
+        with open(TOKEN_FILE) as f:
+            token_data = json.load(f)
+        creds = Credentials(
+            token=token_data.get("token"),
+            refresh_token=token_data["refresh_token"],
+            token_uri=token_data["token_uri"],
+            client_id=token_data["client_id"],
+            client_secret=token_data["client_secret"],
+            scopes=token_data["scopes"],
+        )
+
+    if not creds.valid:
         creds.refresh(Request())
-        token_data["token"] = creds.token
-        with open(TOKEN_FILE, "w") as f:
-            json.dump(token_data, f, indent=2)
     return build("calendar", "v3", credentials=creds)
 
 def get_existing_events(service):
