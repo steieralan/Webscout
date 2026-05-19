@@ -178,23 +178,39 @@ def run():
     service = get_calendar_service()
     existing = get_existing_events(service)
 
-    # Build set of existing event keys for dedup
-    existing_keys = set()
+    # Build map of session_id -> existing calendar event
+    existing_by_sid = {}
     for e in existing.values():
         desc = e.get("description", "")
         sid_match = re.search(r'Session ID: (\d+)', desc)
         if sid_match:
-            existing_keys.add(sid_match.group(1))
+            existing_by_sid[sid_match.group(1)] = e
 
     added = 0
+    updated = 0
     for booking in bookings:
-        if booking['session_id'] in existing_keys:
-            print(f"  ⏭ Already in calendar: {booking['name']} on {booking['date']}")
+        sid = booking['session_id']
+        expected_summary = f"Pickle Juice - {booking['name']}"
+        if sid in existing_by_sid:
+            existing_event = existing_by_sid[sid]
+            current_summary = existing_event.get("summary", "")
+            if current_summary != expected_summary:
+                # Status changed (e.g. waitlist -> confirmed) — update the event
+                existing_event["summary"] = expected_summary
+                service.events().update(
+                    calendarId=CALENDAR_ID,
+                    eventId=existing_event["id"],
+                    body=existing_event
+                ).execute()
+                print(f"  ✏️ Updated: {current_summary} → {expected_summary}")
+                updated += 1
+            else:
+                print(f"  ⏭ Already in calendar: {booking['name']} on {booking['date']}")
         else:
             add_event(service, booking)
             added += 1
 
-    print(f"\n✅ Done. {added} new event(s) added to Google Calendar.")
+    print(f"\n✅ Done. {added} new event(s) added, {updated} updated.")
 
 if __name__ == "__main__":
     run()
