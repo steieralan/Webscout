@@ -84,11 +84,27 @@ def add_event(service, booking):
 
 def scrape_bookings():
     """Log into Pickle Juice and parse all upcoming bookings."""
-    session = cf_requests.Session(impersonate='chrome124')
+    impersonate_profiles = ['chrome124', 'chrome120', 'chrome116', 'chrome110']
 
     print("🔐 Logging into Pickle Juice...")
-    resp = session.get('https://book.picklejuiceusa.com/users/sign_in')
-    token = re.search(r'name="authenticity_token"[^>]*value="([^"]+)"', resp.text).group(1)
+    session = None
+    token = None
+    for profile in impersonate_profiles:
+        print(f"  Trying impersonate={profile}...")
+        s = cf_requests.Session(impersonate=profile)
+        resp = s.get('https://book.picklejuiceusa.com/users/sign_in')
+        match = re.search(r'name="authenticity_token"[^>]*value="([^"]+)"', resp.text)
+        if match:
+            token = match.group(1)
+            session = s
+            print(f"  ✅ Got login page with {profile}")
+            break
+        else:
+            print(f"  ❌ Cloudflare blocked with {profile} (status {resp.status_code})")
+
+    if not session or not token:
+        raise RuntimeError("All impersonation profiles blocked by Cloudflare. Cannot log in.")
+
     session.post('https://book.picklejuiceusa.com/users/sign_in', data={
         'authenticity_token': token,
         'user[email]': PICKLE_EMAIL,
