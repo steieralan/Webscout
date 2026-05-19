@@ -1,0 +1,29 @@
+name: Pickle Juice Calendar Sync
+on:
+  schedule:
+    - cron: '0 */2 * * *'  # every 2 hours
+  workflow_dispatch:        # manual trigger
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install curl_cffi python-dotenv google-auth google-auth-oauthlib google-api-python-client
+
+      - name: Write Google token
+        env:
+          GOOGLE_TOKEN: ${{ secrets.GOOGLE_TOKEN }}
+        run: echo "$GOOGLE_TOKEN" > google_token.json
+
+      - name: Run calendar sync
+        env:
+          PICKLE_EMAIL: ${{ secrets.PICKLE_EMAIL }}
+          PICKLE_PASSWORD: ${{ secrets.PICKLE_PASSWORD }}
+        run: python pickle_calendar.py
