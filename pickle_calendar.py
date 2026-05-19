@@ -31,7 +31,7 @@ def get_calendar_service():
     with open(TOKEN_FILE) as f:
         token_data = json.load(f)
     creds = Credentials(
-        token=token_data["token"],
+        token=token_data.get("token"),
         refresh_token=token_data["refresh_token"],
         token_uri=token_data["token_uri"],
         client_id=token_data["client_id"],
