@@ -101,46 +101,63 @@ def scrape_bookings():
     r = session.get('https://book.picklejuiceusa.com/account/reservations')
     raw = r.text  # keep original HTML for tag-stripping
 
-    bookings = []
-    # Session IDs are HTML-encoded inside attributes: &quot;sessionId&quot;:12345
-    for m in re.finditer(r'sessionId&quot;:(\d+)', raw):
-        sid = m.group(1)
+    def extract_booking(raw, m, sid, waitlist=False):
         start = max(0, m.start() - 2000)
-        # End chunk at the last <div before the session ID to avoid cutting mid-tag
         chunk_end = raw.rfind('<div', start, m.start())
         if chunk_end == -1:
             chunk_end = m.start()
         chunk = raw[start:chunk_end]
-        # Strip tags FIRST, then unescape entities
         text = re.sub(r'<[^>]+>', ' ', chunk)
         text = html_module.unescape(text)
         text = re.sub(r'\s+', ' ', text).strip()
 
         date_match = re.search(r'((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), \w+ \d+)', text)
         time_match = re.search(r'(\d+:\d+ [AP]M - \d+:\d+ [AP]M)', text)
-        # Extract program name: take everything after the last "Paid " and before " Ventnor"
-        if 'Paid ' in text and ' Ventnor' in text:
-            after_last_paid = text.rsplit('Paid ', 1)[-1]
-            raw_name = after_last_paid.split(' Ventnor')[0].strip()
+
+        # Extract program name after last "Paid" or "Unpaid" before "Ventnor"
+        keyword = 'Unpaid ' if waitlist else 'Paid '
+        if keyword in text and ' Ventnor' in text:
+            raw_name = text.rsplit(keyword, 1)[-1].split(' Ventnor')[0].strip()
         else:
-            raw_name = None
-        prog_match = type('m', (), {'group': lambda self, n: raw_name})() if raw_name else None
+            raw_name = 'Open Play'
+        name = re.sub(r'\s+', ' ', raw_name).strip()
+        if waitlist:
+            name = f"{name} (Waitlist)"
 
         if not date_match or not time_match:
             print(f"  ⚠️ Could not parse session {sid}, skipping")
-            continue
+            return None
 
-        name = prog_match.group(1).strip() if prog_match else "Open Play"
-        name = re.sub(r'\s+', ' ', name).strip()
-
-        booking = {
+        print(f"  Found{'(waitlist)' if waitlist else ''}: {name} | {date_match.group(1)} | {time_match.group(1)}")
+        return {
             'session_id': sid,
             'name': name,
             'date': date_match.group(1),
             'time': time_match.group(1),
         }
-        bookings.append(booking)
-        print(f"  Found: {name} | {booking['date']} | {booking['time']}")
+
+    bookings = []
+    seen_ids = set()
+
+    # Confirmed bookings — sessionId in React component
+    for m in re.finditer(r'sessionId&quot;:(\d+)', raw):
+        sid = m.group(1)
+        if sid in seen_ids:
+            continue
+        seen_ids.add(sid)
+        b = extract_booking(raw, m, sid, waitlist=False)
+        if b:
+            bookings.append(b)
+
+    # Waitlist bookings — session_id in delete URL
+    for m in re.finditer(r'delete_clinic_lesson_waitlist\?session_id=(\d+)', raw):
+        sid = m.group(1)
+        if sid in seen_ids:
+            continue
+        seen_ids.add(sid)
+        b = extract_booking(raw, m, sid, waitlist=True)
+        if b:
+            bookings.append(b)
 
     return bookings
 
