@@ -1,0 +1,4 @@
+.env
+*.db # keep the sqlite db local too
+google_credentials.json
+google_token.json
