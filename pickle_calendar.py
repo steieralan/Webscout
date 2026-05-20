@@ -215,8 +215,19 @@ def run():
         if sid_match:
             existing_by_sid[sid_match.group(1)] = e
 
+    current_sids = {b['session_id'] for b in bookings}
     added = 0
     updated = 0
+    removed = 0
+
+    # Remove cancelled sessions
+    for sid, event in existing_by_sid.items():
+        if sid not in current_sids:
+            service.events().delete(calendarId=CALENDAR_ID, eventId=event["id"]).execute()
+            print(f"  🗑️ Removed: {event.get('summary')} (cancelled)")
+            removed += 1
+
+    # Add or update current bookings
     for booking in bookings:
         sid = booking['session_id']
         expected_summary = f"Pickle Juice - {booking['name']}"
@@ -224,7 +235,6 @@ def run():
             existing_event = existing_by_sid[sid]
             current_summary = existing_event.get("summary", "")
             if current_summary != expected_summary:
-                # Status changed (e.g. waitlist -> confirmed) — update the event
                 existing_event["summary"] = expected_summary
                 service.events().update(
                     calendarId=CALENDAR_ID,
@@ -239,7 +249,7 @@ def run():
             add_event(service, booking)
             added += 1
 
-    print(f"\n✅ Done. {added} new event(s) added, {updated} updated.")
+    print(f"\n✅ Done. {added} added, {updated} updated, {removed} removed.")
 
 if __name__ == "__main__":
     run()
