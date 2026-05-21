@@ -188,12 +188,24 @@ def scrape_bookings():
         if b:
             bookings.append(b)
 
-    return bookings
+    # Start times of every session shown on the reservations page, including
+    # "late cancel" cards that carry no sessionId/waitlist token and so are
+    # missed by the loops above.
+    page_text = html_module.unescape(re.sub(r'<[^>]+>', ' ', raw))
+    page_text = re.sub(r'\s+', ' ', page_text)
+    booked_starts = set()
+    for d, t in re.findall(
+        r'((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), \w+ \d+)\s+(\d+:\d+ [AP]M - \d+:\d+ [AP]M)',
+        page_text,
+    ):
+        booked_starts.add(datetime.fromisoformat(parse_datetime(d, t)[0]))
+
+    return bookings, booked_starts
 
 def run():
     print("=== Pickle Juice → Google Calendar Sync ===\n")
     try:
-        bookings = scrape_bookings()
+        bookings, booked_starts = scrape_bookings()
     except Exception as e:
         print(f"❌ Scrape error: {e}")
         traceback.print_exc()
@@ -215,14 +227,22 @@ def run():
         if sid_match:
             existing_by_sid[sid_match.group(1)] = e
 
-    current_sids = {b['session_id'] for b in bookings}
     added = 0
     updated = 0
     removed = 0
 
-    # Remove cancelled sessions
-    for sid, event in existing_by_sid.items():
-        if sid not in current_sids:
+    # Remove genuinely cancelled sessions. The reservations page hides same-day
+    # sessions and renders imminent ("late cancel") ones without a Session ID,
+    # so a missing session only proves cancellation for events after today.
+    today = datetime.now(ET).date()
+    for event in existing_by_sid.values():
+        start_raw = event.get("start", {}).get("dateTime")
+        if not start_raw:
+            continue
+        start_dt = datetime.fromisoformat(start_raw)
+        if start_dt.date() <= today:
+            continue
+        if start_dt not in booked_starts:
             service.events().delete(calendarId=CALENDAR_ID, eventId=event["id"]).execute()
             print(f"  🗑️ Removed: {event.get('summary')} (cancelled)")
             removed += 1
