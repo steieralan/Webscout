@@ -118,16 +118,22 @@ def scrape_bookings():
     if not session or not token:
         raise RuntimeError("All impersonation profiles blocked by Cloudflare. Cannot log in.")
 
-    session.post('https://book.picklejuiceusa.com/users/sign_in', data={
+    login_resp = session.post('https://book.picklejuiceusa.com/users/sign_in.html', data={
         'authenticity_token': token,
         'user[email]': PICKLE_EMAIL,
         'user[password]': PICKLE_PASSWORD,
         'user[remember_me]': '0',
+        'commit': 'Login',
     })
-    print("  ✅ Logged in")
+    # Verify we actually logged in by checking the landing URL
+    if 'sign_in' in login_resp.url:
+        raise RuntimeError(f"Login failed — still at sign_in page. URL: {login_resp.url}")
+    print(f"  ✅ Logged in (landed at {login_resp.url})")
 
     print("📋 Fetching reservations...")
     r = session.get('https://book.picklejuiceusa.com/account/reservations')
+    if 'sign_in' in r.url:
+        raise RuntimeError(f"Session not authenticated for /account/reservations — redirected to {r.url}")
     raw = r.text  # keep original HTML for tag-stripping
 
     def extract_booking(raw, m, sid, waitlist=False):
