@@ -22,7 +22,7 @@ load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 DB_NAME = "webscout_cache.db"
-KEYWORDS = ["Advanced Morning Play ( 4.0 recommended)"]
+KEYWORDS = ["advanced morning play"]
 
 class WebscoutDB:
     def __init__(self):
@@ -85,20 +85,19 @@ def get_registrants(page, number):
     page.wait_for_timeout(8000)
     try:
         page.locator("text=REGISTRANTS").click(timeout=10000)
-        print(f"   ✅ Clicked REGISTRANTS tab")
     except Exception as e:
-        print(f"   ❌ Could not click REGISTRANTS tab: {e}")
+        print(f"   ⚠️ Could not open REGISTRANTS tab: {type(e).__name__}")
+        print(f"   Page title: {page.title()}")
         return []
     page.wait_for_timeout(3000)
     content = page.inner_text("body")
-    print(f"   📄 Page snippet: {repr(content[content.find('REGISTRANT'):content.find('REGISTRANT')+300] if 'REGISTRANT' in content else content[:300])}")
-    match = re.search(r"Name\s*\n(.+?)\n©\s*\d{4}", content, re.DOTALL)
-    if match:
-        names = [n.strip() for n in match.group(1).strip().split("\n") if n.strip() and n.strip() != "Name"]
-        print(f"   👥 Found registrants: {names}")
-        return names
-    print(f"   ⚠️ Regex did not match page content")
-    return []
+    match = re.search(r"Name\n(.+?)\n© \d{4}", content, re.DOTALL)
+    if not match:
+        print("   ⚠️ Registrant list not found in page text")
+        return []
+    names = [n.strip() for n in match.group(1).strip().split("\n") if n.strip() and n.strip() != "Name"]
+    print(f"   Read {len(names)} registrant(s)")
+    return names
 
 def send_sms(matches):
     lines = []
