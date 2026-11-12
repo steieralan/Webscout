@@ -82,14 +82,14 @@ def parse_ms_date(date_str):
 def get_registrants(page, number):
     details_url = f"https://events.courtreserve.com/Online/EventsApi/ApiDetails?id=16396&uiCulture=en-US&number={number}&ajaxCall=false"
     page.goto(details_url, wait_until="domcontentloaded", timeout=30000)
-    page.wait_for_timeout(8000)
-    try:
-        page.locator("text=REGISTRANTS").click(timeout=10000)
-    except Exception as e:
-        print(f"   ⚠️ Could not open REGISTRANTS tab: {type(e).__name__}")
-        print(f"   Page title: {page.title()}")
+    for _ in range(20):
+        if "just a moment" not in page.title().lower():
+            break
+        page.wait_for_timeout(1500)
+    else:
+        print("   ⚠️ Cloudflare challenge never cleared")
         return []
-    page.wait_for_timeout(3000)
+    page.wait_for_timeout(5000)
     content = page.inner_text("body")
     match = re.search(r"Name\n(.+?)\n© \d{4}", content, re.DOTALL)
     if not match:
@@ -122,7 +122,7 @@ def run_scraper():
     captured_data = []
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=True, args=["--disable-blink-features=AutomationControlled"])        
         context = browser.new_context(
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         )
