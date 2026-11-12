@@ -1,5 +1,3 @@
-cd /Users/alansteier/Webscout
-cp scraper.py scraper.py.bak
 import sqlite3
 import hashlib
 import smtplib
