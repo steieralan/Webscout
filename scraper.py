@@ -1,13 +1,16 @@
+cd /Users/alansteier/Webscout
+cp scraper.py scraper.py.bak
 import sqlite3
 import hashlib
+import smtplib
 import warnings
 import os
 import re
 import traceback
-import urllib.request
-import json
+from email.message import EmailMessage
+from zoneinfo import ZoneInfo
 from playwright.sync_api import sync_playwright
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 # Silence environment noise
@@ -19,102 +22,65 @@ urllib3.disable_warnings()
 
 # --- LOAD CREDENTIALS FROM .env ---
 load_dotenv()
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+GMAIL_USER = os.getenv("GMAIL_USER")
+GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
+PHONE_NUMBER = os.getenv("PHONE_NUMBER")
+SMS_TO = f"{PHONE_NUMBER}@vtext.com"
 DB_NAME = "webscout_cache.db"
 KEYWORDS = ["advanced morning play"]
+ET = ZoneInfo("America/New_York")
 
 class WebscoutDB:
     def __init__(self):
         self.db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), DB_NAME)
         self.conn = sqlite3.connect(self.db_path)
         self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS events (
-                hash TEXT PRIMARY KEY,
-                title TEXT,
-                date TEXT,
-                found_at DATETIME
-            )
-        """)
-        self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS registrants (
-                event_hash TEXT,
-                name TEXT,
-                found_at DATETIME,
-                PRIMARY KEY (event_hash, name)
+            CREATE TABLE IF NOT EXISTS counts (
+                event_hash TEXT PRIMARY KEY,
+                signed INTEGER,
+                updated_at DATETIME
             )
         """)
         self.conn.commit()
 
-    def event_hash(self, title, date_str):
-        return hashlib.sha256(f"{title}-{date_str}".encode()).hexdigest()
-
-    def ensure_event(self, title, date_str):
-        h = self.event_hash(title, date_str)
+    def update_count(self, title, date_str, signed):
+        """Store the current signup count and return the previous one (0 if unseen)."""
+        h = hashlib.sha256(f"{title}-{date_str}".encode()).hexdigest()
+        row = self.conn.execute(
+            "SELECT signed FROM counts WHERE event_hash=?", (h,)
+        ).fetchone()
+        previous = row[0] if row else 0
         self.conn.execute(
-            "INSERT OR IGNORE INTO events VALUES (?, ?, ?, ?)",
-            (h, title, date_str, datetime.now())
+            "INSERT OR REPLACE INTO counts VALUES (?, ?, ?)",
+            (h, signed, datetime.now())
         )
         self.conn.commit()
-        return h
-
-    def get_new_registrants(self, event_hash, current_names):
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT name FROM registrants WHERE event_hash=?", (event_hash,))
-        known = {row[0] for row in cursor.fetchall()}
-        new_names = [n for n in current_names if n not in known]
-        if new_names:
-            self.conn.executemany(
-                "INSERT OR IGNORE INTO registrants VALUES (?, ?, ?)",
-                [(event_hash, name, datetime.now()) for name in new_names]
-            )
-            self.conn.commit()
-        return new_names
+        return previous
 
 def parse_ms_date(date_str):
-    """Convert /Date(1771765200000)/ to YYYY-MM-DD"""
+    """Convert /Date(1771765200000)/ to YYYY-MM-DD in Eastern time."""
     match = re.search(r'/Date\((\d+)\)/', date_str or "")
     if match:
         ms = int(match.group(1))
-        return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
+        return datetime.fromtimestamp(ms / 1000, tz=ET).strftime("%Y-%m-%d")
     return "Unknown"
-
-def get_registrants(page, number):
-    details_url = f"https://events.courtreserve.com/Online/EventsApi/ApiDetails?id=16396&uiCulture=en-US&number={number}&ajaxCall=false"
-    page.goto(details_url, wait_until="domcontentloaded", timeout=30000)
-    for _ in range(20):
-        if "just a moment" not in page.title().lower():
-            break
-        page.wait_for_timeout(1500)
-    else:
-        print("   ⚠️ Cloudflare challenge never cleared")
-        return []
-    page.wait_for_timeout(5000)
-    content = page.inner_text("body")
-    match = re.search(r"Name\n(.+?)\n© \d{4}", content, re.DOTALL)
-    if not match:
-        print("   ⚠️ Registrant list not found in page text")
-        return []
-    names = [n.strip() for n in match.group(1).strip().split("\n") if n.strip() and n.strip() != "Name"]
-    print(f"   Read {len(names)} registrant(s)")
-    return names
 
 def send_sms(matches):
     lines = []
     for m in matches:
-        slots_info = m['slots_info'].replace('\xa0', ' ').strip()
-        slots_short = re.sub(r'(\d+)\s+of\s+(\d+).*', r'\1/\2', slots_info) if slots_info else slots_info
-        date_short = datetime.strptime(m['date'], "%Y-%m-%d").strftime("%m/%d")
-        lines.append(f"{date_short} {slots_short}")
-        for name in m['all_registrants']:
-            tag = " +" if name in m['new_registrants'] else ""
-            lines.append(f"  {name}{tag}")
-    body = "\n".join(lines)
+        slots = m["slots_info"].replace("\xa0", " ").strip()
+        gained = m["signed"] - m["previous"]
+        lines.append(f"{m['date']}: {m['signed']} signed (+{gained}) - {slots}")
+    body = "Advanced Morning Play\n" + "\n".join(lines)
 
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = json.dumps({"chat_id": TELEGRAM_CHAT_ID, "text": body}).encode()
-    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
-    urllib.request.urlopen(req)
+    msg = EmailMessage()
+    msg.set_content(body)
+    msg["From"] = GMAIL_USER
+    msg["To"] = SMS_TO
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+        server.send_message(msg)
 
 def run_scraper():
     db = WebscoutDB()
@@ -122,7 +88,7 @@ def run_scraper():
     captured_data = []
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True, args=["--disable-blink-features=AutomationControlled"])        
+        browser = p.chromium.launch(headless=True)
         context = browser.new_context(
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         )
@@ -132,23 +98,24 @@ def run_scraper():
             if "ReadCalendarEvents" in response.url and response.status == 200:
                 try:
                     data = response.json()
-                    events = data.get("Data", [])
-                    captured_data.extend(events)
+                    captured_data.extend(data.get("Data", []))
                 except Exception:
                     pass
 
         page.on("response", handle_response)
 
         try:
+            print("🚀 Webscout: Initiating API interception...")
             page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
+            print("⏳ Hydrating API data (15s)...")
             page.wait_for_timeout(15000)
 
             if not captured_data:
                 print("❌ Fatal: ReadCalendarEvents never appeared in network traffic.")
                 return
 
-            today = datetime.now(tz=timezone.utc).date()
+            today = datetime.now(ET).date()
             cutoff = today + timedelta(days=7)
 
             matches = []
@@ -160,35 +127,26 @@ def run_scraper():
                 event_date = datetime.strptime(date_str, "%Y-%m-%d").date()
                 if event_date < today or event_date > cutoff:
                     continue
-                if not any(kw.lower() in title.lower() for kw in KEYWORDS):
+                if not any(kw in title.lower() for kw in KEYWORDS):
                     continue
 
-                signed = item.get("SignedMembers", 0)
-                slots_info = item.get("SlotsInfo", "")
-                number = item.get("Number")
+                signed = item.get("SignedMembers", 0) or 0
+                previous = db.update_count(title, date_str, signed)
+                print(f"📅 {date_str}: {signed} signed (was {previous})")
 
-                print(f"📅 Checking {date_str} ({signed} signed)...")
-                event_hash = db.ensure_event(title, date_str)
-                registrants = get_registrants(page, number)
-                new_registrants = db.get_new_registrants(event_hash, registrants)
-
-                if new_registrants:
-                    print(f"✨ New registrant(s) on {date_str}: {', '.join(new_registrants)}")
+                if signed > previous:
                     matches.append({
                         "date": date_str,
-                        "title": title,
-                        "slots_info": slots_info,
-                        "new_registrants": new_registrants,
-                        "all_registrants": registrants
+                        "signed": signed,
+                        "previous": previous,
+                        "slots_info": item.get("SlotsInfo", ""),
                     })
-                else:
-                    print(f"   No new registrants on {date_str}")
 
             if matches:
                 send_sms(matches)
-                print(f"🏆 Success: {len(matches)} event(s) with new registrants sent via SMS.")
+                print(f"🏆 Success: {len(matches)} session(s) with new signups sent via SMS.")
             else:
-                print(f"⏱ Check complete: no new registrants found.")
+                print("⏱ Check complete: no new signups.")
 
         except Exception as e:
             print(f"❌ Scrape Error: {e}")
